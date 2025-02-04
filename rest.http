@@ -30,7 +30,7 @@ Content-Type: application/json
 
 {
   	"email": "kenan@gmail.com",
-  	"password": "Kenan123"
+  	"password": "geslo123"
 }
 
 ### GET /auth/logout

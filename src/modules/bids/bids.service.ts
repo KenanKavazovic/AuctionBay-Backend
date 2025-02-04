@@ -8,6 +8,18 @@ export class BidsService {
   constructor (private readonly prisma: DatabaseService) {}
 
   async create(createBidDto: Prisma.BidCreateInput, user: User, auction_id: number): Promise<Bid> {
+    const auction = await this.prisma.auction.findUnique({
+      where: {
+        auction_id
+      }
+    })
+    if (!auction) {
+      throw new BadRequestException('Auction not found.');
+    }
+    if (auction.endedAt && new Date(auction.endedAt) < new Date()) {
+      Logging.warn('You cannot place a bid on an auction that has already ended.');
+      throw new BadRequestException('You cannot place a bid on an auction that has already ended.');
+    }
     const highestBid = await this.prisma.bid.findFirst({
       where: {
         auction_id
@@ -16,15 +28,24 @@ export class BidsService {
         amount: 'desc'
       }
     })
-    const auction = await this.prisma.auction.findUnique({
+    const latestBid = await this.prisma.bid.findFirst({
       where: {
-        auction_id
-      }
+        auction_id,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
     })
+    if (latestBid && latestBid.user_id === user.user_id) {
+      Logging.warn('You cannot place two consecutive bids on the same auction.');
+      throw new BadRequestException('You cannot place two consecutive bids on the same auction.');
+    }
     if (auction.startingPrice > createBidDto.amount) {
       Logging.warn('Your desired bid was too low, you must bid higher than the starting price.')
+      throw new BadRequestException('Your bid must be higher than the starting price.');
     } else if(highestBid && highestBid.amount >= createBidDto.amount) {
       Logging.warn('Your desired bid was too low, you must bid higher than the current highest bid.')
+      throw new BadRequestException('Your bid must be higher than the current highest bid.');
     }
     else {
       try {
@@ -91,7 +112,14 @@ export class BidsService {
       },
       include: {
         Auction: true,
-        User: true,
+        User: {
+          select: {
+            user_id: true,
+            firstName: true,
+            lastName: true,
+            avatar: true,
+          },
+        },
       },
       orderBy: {
           amount: 'desc'
